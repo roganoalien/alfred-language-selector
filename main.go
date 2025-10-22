@@ -75,7 +75,7 @@ func cfStringToGo(s C.CFStringRef) string {
 	return C.GoString(&buffer[0])
 }
 
-func listLayouts() {
+func getInputSources(shouldReturn bool) (AlfredOutput, int) {
 	current := C.getCurrentSource()
 	// currentName := cfStringToGo(C.getSourceName(current))
 	currentID := cfStringToGo(C.getSourceID(current))
@@ -84,25 +84,47 @@ func listLayouts() {
 	count := int(C.CFArrayGetCount(all))
 
 	var items []AlfredItem
+	var currentIndex int
 
-	for i := 0; i < count; i++ {
+	for i := range count {
 		src := (C.TISInputSourceRef)(C.CFArrayGetValueAtIndex(all, C.CFIndex(i)))
 		name := cfStringToGo(C.getSourceName(src))
 		id := cfStringToGo(C.getSourceID(src))
 		mark := ""
 		if id == currentID {
+			currentIndex = i
 			mark = " (Current)"
 		}
-		items = append(items, AlfredItem{
+		item := AlfredItem{
 			Title:    name + mark,
 			Subtitle: id,
 			Arg:      id,
 			Valid:    true,
-		})
+		}
+		items = append(items, item)
 	}
 
 	out := AlfredOutput{Items: items}
-	json.NewEncoder(os.Stdout).Encode(out)
+
+	if shouldReturn {
+		return out, currentIndex
+	} else {
+		json.NewEncoder(os.Stdout).Encode(out)
+		return AlfredOutput{}, 0
+	}
+}
+
+func selectIndex(next bool) {
+	out, index := getInputSources(true)
+	if next {
+		switchLayout(out.Items[index+1].Arg)
+	} else {
+		switchLayout(out.Items[index-1].Arg)
+	}
+}
+
+func listLayouts() {
+	getInputSources(false)
 }
 
 func switchLayout(idStr string) {
@@ -116,13 +138,18 @@ func switchLayout(idStr string) {
 
 func main() {
 	args := os.Args
-	if len(args) == 1 {
+
+	if len(args) < 2 {
 		listLayouts()
-	} else if len(args) == 2 {
-		switchLayout(args[1])
-	} else {
-		fmt.Println("Usage:")
-		fmt.Println("  keyboardlang           # list layouts as JSON for Alfred")
-		fmt.Println("  keyboardlang <sourceID> # switch layout")
+		return
+	}
+
+	param := args[1]
+
+	switch param {
+	case "next", "prev":
+		selectIndex(param == "next")
+	default:
+		switchLayout(param)
 	}
 }
